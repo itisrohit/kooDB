@@ -10,7 +10,18 @@ path="src/lib.rs"
 
 
 [[bin]]
+name = "external"
+path="external_excess.rs"
+
+
+[[bin]]
+name = "list"
+path="list_users.ts"
+
+[[example]]
+name = "flexible"
+path="examples/flexible_example.rs"
+
 
 [dependencies]
-tokio = "1.28"
-serde = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
