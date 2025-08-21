@@ -1,0 +1,16 @@
+[package]
+name = "kooDB"
+version = "0.1.0"
+edition = "2024"
+
+
+[lib]
+name="kooDB"
+path="src/lib.rs"
+
+
+[[bin]]
+
+[dependencies]
+tokio = "1.28"
+serde = "1.0"
