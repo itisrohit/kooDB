@@ -1,19 +1,16 @@
-use rusqlite::{{Connection, Result ,types::Value}};
+use rusqlite::{Connection, Result, types::Value};
+use std::collections::HashMap;
 
-use std::Collection::HashMap;
-
-
-// Generic model representation for a model type 
+// Generic model representation
 #[derive(Debug, Clone)]
 pub struct Model {
     pub id: Option<i32>,
-    pub data: Hashmap<String, Value>,
+    pub data: HashMap<String, Value>,
 }
 
-
-// Schema defination for model type 
+// Schema definition for a model type
 #[derive(Debug, Clone)]
-public struct Schema {
+pub struct Schema {
     pub name: String,
     pub fields: HashMap<String, FieldType>,
 }
@@ -26,9 +23,8 @@ pub enum FieldType {
     Boolean,
 }
 
-
 pub struct FlexibleDatabase {
-    pub conn: Connection, 
+    pub conn: Connection,
     pub schemas: HashMap<String, Schema>,
 }
 
@@ -39,66 +35,103 @@ impl FlexibleDatabase {
             conn,
             schemas: HashMap::new(),
         })
-
     }
-
-    // Define a new schema/model type 
     
+    // Define a ne schema/model type
     pub fn define_schema(&mut self, schema: Schema) -> Result<()> {
         self.schemas.insert(schema.name.clone(), schema.clone());
-
-        // Create table Dynamically
         
+        // Create the table dynamically
         let mut sql = format!("CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY", schema.name);
+        
         for (field_name, field_type) in &schema.fields {
             let sql_type = match field_type {
                 FieldType::Text => "TEXT",
                 FieldType::Integer => "INTEGER",
                 FieldType::Real => "REAL",
-                FieldType::Boolean => "BOOLEAN",
+                FieldType::Boolean => "INTEGER", // SQLite doesn't have boolean, using integer
             };
-
+            
             // Add NOT NULL constraint for all fields except id
             sql.push_str(&format!(", {} {} NOT NULL", field_name, sql_type));
         }
-
+        
         sql.push_str(")");
-
-        self.conn.excecute(&sql, [])?;
+        
+        self.conn.execute(&sql, [])?;
         Ok(())
-}
+    }
+    
+    // Create a new model instance
+    pub fn create_model(&self, schema_name: &str, data: HashMap<String, Value>) -> Result<i32> {
+        let _schema = self.schemas.get(schema_name)
+            .ok_or_else(|| rusqlite::Error::ExecuteReturnedResults)?;
+        
+        let mut fields = vec![];
+        let mut placeholders = vec![];
+        let mut values: Vec<Value> = vec![];
+        
+        for (field_name, value) in data {
+            // Validate that field exists in schema
+            if !self.schemas.get(schema_name).unwrap().fields.contains_key(&field_name) {
+                return Err(rusqlite::Error::ExecuteReturnedResults);
+            }
+            
+            fields.push(field_name);
+            placeholders.push("?".to_string());
+            values.push(value);
+        }
+        
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            schema_name,
+            fields.join(", "),
+            placeholders.join(", ")
+        );
+        
+        self.conn.execute(&sql, rusqlite::params_from_iter(values))?;
+        let id = self.conn.last_insert_rowid() as i32;
+        Ok(id)
+        }
+        
+        // Get a model by ID
+        pub fn get_model(&self, schema_name: &str, id: i32) -> Result<Option<Model>> {
+            let _schema = self.schemas.get(schema_name)
+                .ok_or_else(|| rusqlite::Error::ExecuteReturnedResults)?;
 
-// Create a new model instance
-pub fn create_model(&self, schema_name: &str, data: HashMap<String, Value>) -> Result<i32> {
-    let _schema = self.schemas.get(schema_name)
-        .ok_or_else(|| rusqlite:: Error::ExecuteReturnedResults)?;
+            let mut sql = format!("SELECT id");
+            for field_name in self.schemas.get(schema_name).unwrap().fields.key() {
+                sql.push_str(&format!(", {}", field_name));
+            }
+            sql.push_str(&format!(" FROM {} WHERE id = ?", schema_name));
 
-    let mut fields = vec![];
-    let mut placeholders = vec![];
-    let mut values: Vec<Value> = vec![];
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut rows = stmt.query([id])?;
 
-    for (field_name, value) in data {
-        // Validate that field exists in schema
-        if !self.schemas.get(schema_name).unwarp().fields.contains_key(&field_name) {
-            return Err(ruqslite::Error::ExcecuteReturnedResults);
+            if let Some(row) = rows.next()?{
+                let mut data = HashMap::new();
+                let id: i32 = row.get(0)?;
+
+                let mut col_index = 1;
+                for (field_name, field_type) in &self.schemas.get(schema_name).unwrap().fields {
+                    let value = match field_type {
+                         FieldType::Text => Value::Text(row.get(col_index)?),
+                    FieldType::Integer => Value::Integer(row.get(col_index)?),
+                    FieldType::Real => Value::Real(row.get(col_index)?),
+                    FieldType::Boolean => Value::Integer(if row.get::<_, i32>(col_index)? == 0 { 0 } else { 1 }),
+                    };
+                    data.insert(field_name.clone(), value);
+                    col_index += 1;
+                }
+                Ok(Some(Model { id: Some(id), data }))
+            } else {
+                Ok(None)
+            }
         }
 
-        fields.push(field_name);
-        placeholders.push("?".to_string());
-        values.push(value);
+        // Get all models of a type
+
     }
-
-    let sql = format!(
-        "INSERT INTO {} ({}) VALUES ({})"),
-        schema_name,
-        fields.join(", "),
-        placeholders.join(", ")
-    );
-
-    self.conn.execute(&sql, rusqlite::params_from_iter(values.iter()))?;
-    let id = self.conn.last_insert_rowid() as i32;
-    Ok(id)
-}
-
-// Get model by id
-
+    
+    // End of impl FlexibleDatabase
+    
