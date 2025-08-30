@@ -1,22 +1,13 @@
 [package]
-name = "kooDB"
+name = "koo_db"
 version = "0.1.0"
 edition = "2024"
 
 
 [lib]
-name="kooDB"
+name="koo_db"
 path="src/lib.rs"
 
-
-[[bin]]
-name = "external"
-path="external_excess.rs"
-
-
-[[bin]]
-name = "list"
-path="list_users.ts"
 
 [[example]]
 name = "flexible"
